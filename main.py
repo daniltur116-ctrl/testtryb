@@ -1,5 +1,5 @@
 """
-Трубомер - полная версия с голосовым вводом для APK
+Трубомер - версия для сборки APK (без голоса)
 """
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
@@ -7,20 +7,10 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
-from kivy.clock import Clock
 from datetime import datetime
 import json
 import re
-import threading
 
-# Импорт speech_recognition (будет работать в APK)
-try:
-    import speech_recognition as sr
-    SPEECH_AVAILABLE = True
-except ImportError:
-    SPEECH_AVAILABLE = False
-
-# ============= ПАРСИНГ =============
 def parse_length(text):
     text = text.lower().strip()
     
@@ -70,13 +60,11 @@ def format_length(m):
     else:
         return f"{int(m * 1000)} мм"
 
-# ============= ПРИЛОЖЕНИЕ =============
 class PipeApp(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.measurements = []
         self.load()
-        self.recognizer = sr.Recognizer() if SPEECH_AVAILABLE else None
     
     def load(self):
         try:
@@ -92,11 +80,9 @@ class PipeApp(App):
     def build(self):
         root = BoxLayout(orientation='vertical', padding=10, spacing=10)
         
-        # Заголовок
         title = Label(text="ТРУБОМЕР", font_size='24sp', size_hint_y=0.08)
         root.add_widget(title)
         
-        # Поле ввода
         self.input = TextInput(
             hint_text="Введите длину\nПример: 2 метра 50 см",
             multiline=False,
@@ -104,13 +90,7 @@ class PipeApp(App):
         )
         root.add_widget(self.input)
         
-        # Кнопки
         btn_layout = BoxLayout(size_hint_y=0.12, spacing=10)
-        
-        if SPEECH_AVAILABLE:
-            self.voice_btn = Button(text="🎤 Голосом")
-            self.voice_btn.bind(on_press=self.voice_input)
-            btn_layout.add_widget(self.voice_btn)
         
         save_btn = Button(text="📝 Сохранить")
         save_btn.bind(on_press=self.save_measurement)
@@ -126,11 +106,9 @@ class PipeApp(App):
         btn_layout.add_widget(clear_btn)
         root.add_widget(btn_layout)
         
-        # Статистика
         self.stats = Label(text=self.get_stats(), size_hint_y=0.08)
         root.add_widget(self.stats)
         
-        # Область вывода
         scroll = ScrollView(size_hint_y=0.45)
         self.output = Label(text="Готов к работе", size_hint_y=None, font_size='14sp')
         self.output.bind(texture_size=self.output.setter('size'))
@@ -157,46 +135,6 @@ class PipeApp(App):
             self.output.text = "❌ Не распознано\nПример: 2 метра 50 см"
             return
         
-        self.add_measurement(text, length)
-    
-    def voice_input(self, instance):
-        if not SPEECH_AVAILABLE:
-            self.output.text = "❌ Голосовой ввод недоступен"
-            return
-        
-        self.voice_btn.disabled = True
-        self.output.text = "🎤 Слушаю... Говорите чётко"
-        
-        def record():
-            try:
-                with sr.Microphone() as source:
-                    self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                    audio = self.recognizer.listen(source, timeout=5, phrase_time_limit=5)
-                    text = self.recognizer.recognize_google(audio, language="ru-RU")
-                    Clock.schedule_once(lambda dt: self.process_voice(text))
-            except sr.WaitTimeoutError:
-                Clock.schedule_once(lambda dt: self.set_output("⏰ Время истекло"))
-            except sr.UnknownValueError:
-                Clock.schedule_once(lambda dt: self.set_output("🔇 Речь не распознана"))
-            except sr.RequestError:
-                Clock.schedule_once(lambda dt: self.set_output("🌐 Ошибка интернета"))
-            except Exception as e:
-                Clock.schedule_once(lambda dt: self.set_output(f"❌ Ошибка: {e}"))
-            finally:
-                Clock.schedule_once(lambda dt: self.enable_voice_btn())
-        
-        threading.Thread(target=record, daemon=True).start()
-    
-    def process_voice(self, text):
-        self.output.text = f"📝 Распознано: {text}"
-        length = parse_length(text)
-        
-        if length > 0:
-            self.add_measurement(text, length)
-        else:
-            self.output.text = f"❌ Не распознано: {text}\n\nПример: два метра пятьдесят сантиметров"
-    
-    def add_measurement(self, text, length):
         measurement = {
             'length': length,
             'text': text,
@@ -209,12 +147,6 @@ class PipeApp(App):
         self.input.text = ''
         self.stats.text = self.get_stats()
         self.output.text = f"✅ Добавлено: {format_length(length)}"
-    
-    def set_output(self, text):
-        self.output.text = text
-    
-    def enable_voice_btn(self):
-        self.voice_btn.disabled = False
     
     def show_measurements(self, instance):
         if not self.measurements:
